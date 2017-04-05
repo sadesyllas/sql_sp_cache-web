@@ -1,36 +1,94 @@
-<div class="jumbotron">
-  <h2><%= gettext "Welcome to %{name}", name: "Phoenix!" %></h2>
-  <p class="lead">A productive web framework that<br />does not compromise speed and maintainability.</p>
+<div class="row">
+  <div class="col-md-6">
+    <h1>
+      SqlSpCache
+      <small class="version">
+        Cache version:
+        <span id="cache-version">-</span>
+      / Cache web stats version:
+        <span>v<%= elem(:application.get_key(:sql_sp_cache_web, :vsn), 1) %></span>
+      </small>
+    </h1>
+    Last update: <span id="time">-</span>
+  </div>
+  <div class="col-md-6">
+    <div id="status" class="img-circle bg-info pull-right">
+      <h4>
+        <small>
+          CACHE
+          <br />
+          HEALTH
+        </small>
+      </h4>
+    </div>
+  </div>
 </div>
 
-<div class="row marketing">
-  <div class="col-lg-6">
-    <h4>Resources</h4>
-    <ul>
-      <li>
-        <a href="http://phoenixframework.org/docs/overview">Guides</a>
-      </li>
-      <li>
-        <a href="https://hexdocs.pm/phoenix">Docs</a>
-      </li>
-      <li>
-        <a href="https://github.com/phoenixframework/phoenix">Source</a>
-      </li>
-    </ul>
-  </div>
+<hr id="header-separator" />
 
-  <div class="col-lg-6">
-    <h4>Help</h4>
-    <ul>
-      <li>
-        <a href="http://groups.google.com/group/phoenix-talk">Mailing list</a>
-      </li>
-      <li>
-        <a href="http://webchat.freenode.net/?channels=elixir-lang">#elixir-lang on freenode IRC</a>
-      </li>
-      <li>
-        <a href="https://twitter.com/elixirphoenix">@elixirphoenix</a>
-      </li>
-    </ul>
+<div style="display: none;" class="row cache-row" data-template="cache-row-template">
+  <div class=col-md-12>
+    <div class="row">
+      <div class="col-md-12 cache-header" data-template-role="header"></div>
+    </div>
+    <div class="row">
+      <div class="col-md-6 cache-keys">
+        <table class="table table-hover" style="display: block; overflow: hidden; word-break: break-word;">
+          <thead>
+            <tr>
+              <th style="width: 50%;">Cache key</th>
+              <th style="width: 50%;">Cache key clients count</th>
+            </tr>
+          </thead>
+          <tbody data-template-role="keys"></tbody>
+        </table>
+      </div>
+      <div class="col-md-6 cache-stats">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th colspan="2">Cache stats</th>
+            </tr>
+          </thead>
+          <tbody data-template-role="stats"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
+</div>
+
+<div id="statsFailed" class="row" style="display: none;">
+  <div class="col-md-12">
+    <h4 class="text-danger">
+      FAILED TO UPDATE STATISTICS! STATISTICS ARE NOT UP-TO-DATE!
+    </h4>
+    <hr/>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-12">
+    <div class="row">
+      <div class="col-md-12">
+        <h4>Global statistics:</h4>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-md-12">
+        Push queue length: <span id="pushQueueLength">-</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr />
+
+<div class="row">
+  <div class="col-md-12">
+    <h4>Per cache statistics:</h4>
+  </div>
+</div>
+
+<div class="row">
+  <div id="stats" class="col-md-12"></div>
 </div>

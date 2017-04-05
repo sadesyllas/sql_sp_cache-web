@@ -1,1 +1,28 @@
-/* This file is for your main application css. */
+#status {
+  padding: 1vh 1vw;
+}
+
+#status small {
+  font-weight: bold;
+}
+
+.version {
+  font-size: .3em;
+}
+
+#header-separator {
+  border-top-width: 10px;
+  border-top-color: aliceblue;
+}
+
+.version span {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.cache-header {
+  background: aliceblue;
+  padding-top: 1vh;
+  padding-bottom: 1vh;
+  font-size: 1.5em;
+}

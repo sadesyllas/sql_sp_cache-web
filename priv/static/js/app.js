@@ -1470,10 +1470,257 @@ window.addEventListener('click', function (event) {
 }, false);
   })();
 });
-require.register("web/static/js/app.js", function(exports, require, module) {
+require.register("sql_sp_cache-web/web/static/js/socket.js", function(exports, require, module) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _phoenix = require("phoenix");
+
+var socket = new _phoenix.Socket("/socket", { params: { token: window.userToken } });
+
+// When you connect, you'll often need to authenticate the client.
+// For example, imagine you have an authentication plug, `MyAuth`,
+// which authenticates the session and assigns a `:current_user`.
+// If the current user exists you can assign the user's token in
+// the connection for use in the layout.
+//
+// In your "web/router.ex":
+//
+//     pipeline :browser do
+//       ...
+//       plug MyAuth
+//       plug :put_user_token
+//     end
+//
+//     defp put_user_token(conn, _) do
+//       if current_user = conn.assigns[:current_user] do
+//         token = Phoenix.Token.sign(conn, "user socket", current_user.id)
+//         assign(conn, :user_token, token)
+//       else
+//         conn
+//       end
+//     end
+// Now you need to pass this token to JavaScript. You can do so
+// inside a script tag in "web/templates/layout/app.html.eex":
+//
+//     <script>window.userToken = "<%= assigns[:user_token] %>";</script>
+//
+// You will need to verify the user token in the "connect/2" function
+// in "web/channels/user_socket.ex":
+//
+//     def connect(%{"token" => token}, socket) do
+//       # max_age: 1209600 is equivalent to two weeks in seconds
+//       case Phoenix.Token.verify(socket, "user socket", token, max_age: 1209600) do
+//         {:ok, user_id} ->
+//           {:ok, assign(socket, :user, user_id)}
+//         {:error, reason} ->
+//           :error
+//       end
+//     end
+//
+// Finally, pass the token on connect as below. Or remove it
+// from connect if you don't care about authentication.
+
+// NOTE: The contents of this file will only be executed if
+// you uncomment its entry in "web/static/js/app.js".
+
+// To use Phoenix channels, the first step is to import Socket
+// and connect at the socket path in "lib/my_app/endpoint.ex":
+var statusToClass = {
+  'green': 'bg-success',
+  'red': 'bg-danger'
+};
+
+var statNameMap = {
+  'push_queue_length': 'Push queue length',
+  'byte_size': 'Size',
+  'db_fetch_count': 'Query count',
+  'db_fetch_duration': 'Total query duration',
+  'db_fetch_mean_duration': 'Mean query duration'
+};
+
+var byteSizes = {};
+byteSizes.b = 1;
+byteSizes.k = byteSizes.b * 1024;
+byteSizes.m = byteSizes.k * 1024;
+byteSizes.g = byteSizes.m * 1024;
+byteSizes.t = byteSizes.g * 1024;
+byteSizes.p = byteSizes.t * 1024;
+byteSizes.e = byteSizes.p * 1024;
+byteSizes.z = byteSizes.e * 1024;
+byteSizes.y = byteSizes.z * 1024;
+var byteSizeNames = ['y', 'z', 'e', 'p', 't', 'g', 'm', 'k', 'b'];
+
+function getByteSizeDescription(byteSize) {
+  var byteSizePerKind = byteSizeNames.reduce(function (acc, val) {
+    var count = Math.floor(byteSize / byteSizes[val]);
+    acc[val] = count;
+    byteSize = byteSize - count * byteSizes[val];
+    return acc;
+  }, {});
+  return byteSizeNames.filter(function (bsn) {
+    return byteSizePerKind[bsn];
+  }).map(function (bsn) {
+    return "" + byteSizePerKind[bsn] + bsn.toUpperCase();
+  }).join('+');
+};
+
+function getDurationDescription(milliseconds) {
+  var x = new Date(0);
+  x.setTime(x.getTime() + x.getTimezoneOffset() * 60000);
+  x.setTime(x.getTime() + milliseconds);
+  return [x.getFullYear() != 1970 ? x.getFullYear() - 1970 + "Y" : '', x.getMonth() != 0 ? x.getMonth() + "M" : '', x.getDate() != 1 ? x.getDate() - 1 + "D" : '', x.getHours() != 0 ? x.getHours() + "H" : '', x.getMinutes() != 0 ? x.getMinutes() + "m" : '', x.getSeconds() != 0 ? x.getSeconds() + "s" : '', x.getMilliseconds() != 0 ? x.getMilliseconds() + "ms" : ''].filter(function (x) {
+    return x;
+  }).join('+');
+}
+
+window.foo = getDurationDescription;
+
+function updateTime() {
+  document.getElementById('time').textContent = new Date().toISOString();
+}
+
+function updateStatus(status) {
+  var statusElement = document.getElementById('status');
+  Array.from(statusElement.classList).filter(function (klass) {
+    return (/^bg-/.test(klass)
+    );
+  }).forEach(function (klass) {
+    return statusElement.classList.remove(klass);
+  });
+  statusElement.classList.add(statusToClass[status.status]);
+
+  var versionElement = document.getElementById('cache-version');
+  var version = (status.heartbeat || {}).version;
+  versionElement.textContent = version ? "v" + version : '-';
+}
+
+function makeCacheRow(cacheName, cache) {
+  var tplt = document.querySelector('[data-template="cache-row-template"]').cloneNode(true);
+  tplt.removeAttribute('data-template');
+
+  var header = tplt.querySelector('[data-template-role="header"]');
+  header.removeAttribute('data-template-role');
+  header.innerHTML = cacheName + " (pid: <em>" + cache.pid + "</em>)";
+
+  var keys = tplt.querySelector('[data-template-role="keys"]');
+  keys.removeAttribute('data-template-role');
+  Object.keys(cache.keys || {}).forEach(function (key) {
+    var tr = document.createElement('tr');
+    var tdCacheKey = document.createElement('td');
+    var tdCacheKeyClientsCount = document.createElement('td');
+    tdCacheKey.textContent = key;
+    tdCacheKeyClientsCount.textContent = cache.keys[key];
+    tr.appendChild(tdCacheKey);
+    tr.appendChild(tdCacheKeyClientsCount);
+    keys.appendChild(tr);
+  });
+
+  var stats = tplt.querySelector('[data-template-role="stats"]');
+  keys.removeAttribute('data-template-role');
+  var statKeys = Object.keys(cache.stats || {});
+  statKeys.sort();
+  statKeys.forEach(function (statKey) {
+    var tr = document.createElement('tr');
+    var tdKey = document.createElement('td');
+    var tdValue = document.createElement('td');
+    tdKey.textContent = statNameMap[statKey];
+    if (statKey === 'byte_size') {
+      tdValue.textContent = getByteSizeDescription(cache.stats[statKey]);
+    } else if (statKey === 'db_fetch_duration' || statKey === 'db_fetch_mean_duration') {
+      tdValue.textContent = getDurationDescription(Math.round(cache.stats[statKey]));
+    } else {
+      tdValue.textContent = cache.stats[statKey];
+    }
+    tr.appendChild(tdKey);
+    tr.appendChild(tdValue);
+    stats.appendChild(tr);
+  });
+
+  return tplt;
+}
+
+socket.connect();
+
+// Now that you are connected, you can join channels with a topic:
+var statsChannel = socket.channel("stats:all", null);
+
+statsChannel.join().receive("ok", function (_) {
+  return console.log('joined the stats channel successfully');
+}).receive("error", function (_) {
+  return console.error('unable to join the stats channel');
+});
+
+statsChannel.on("heartbeat", function (heartbeat) {
+  updateTime();
+  updateStatus(heartbeat);
+});
+
+statsChannel.on("stats", function (stats) {
+  updateTime();
+
+  var statsFailed = document.getElementById('statsFailed');
+
+  if (stats.status !== 'green') {
+    statsFailed.style.display = '';
+    return;
+  }
+
+  statsFailed.style.display = 'none';
+
+  stats = stats.stats;
+
+  var pushQueueLength = document.getElementById('pushQueueLength');
+  pushQueueLength.textContent = stats.push_queue_length;
+
+  var cacheStatsLayout = {};
+  var cacheNames = Object.keys(stats.caches);
+
+  cacheNames.sort();
+
+  cacheNames.forEach(function (cacheName) {
+    var cache = stats.caches[cacheName];
+    var statNames = Object.keys(cache);
+    statNames.sort();
+
+    cacheStatsLayout[cacheName] = statNames;
+  });
+
+  var cacheStatsDomElements = [];
+
+  Object.keys(cacheStatsLayout).forEach(function (cacheName) {
+    var cacheStatsDomElement = makeCacheRow(cacheName, stats.caches[cacheName]);
+    cacheStatsDomElements.push(cacheStatsDomElement);
+  });
+
+  var statsElement = document.getElementById('stats');
+  Array.from(statsElement.children).forEach(function (child) {
+    return child.remove();
+  });
+  cacheStatsDomElements.forEach(function (node) {
+    node.style.display = '';
+    statsElement.appendChild(node);
+  });
+});
+
+statsChannel.push('poll', null);
+
+exports.default = socket;
+});
+
+;require.register("web/static/js/app.js", function(exports, require, module) {
 "use strict";
 
 require("phoenix_html");
+
+var _socket = require("./socket");
+
+var _socket2 = _interopRequireDefault(_socket);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 });
 
 ;require.register("web/static/js/socket.js", function(exports, require, module) {
@@ -1509,7 +1756,6 @@ var socket = new _phoenix.Socket("/socket", { params: { token: window.userToken 
 //         conn
 //       end
 //     end
-//
 // Now you need to pass this token to JavaScript. You can do so
 // inside a script tag in "web/templates/layout/app.html.eex":
 //
@@ -1536,21 +1782,190 @@ var socket = new _phoenix.Socket("/socket", { params: { token: window.userToken 
 
 // To use Phoenix channels, the first step is to import Socket
 // and connect at the socket path in "lib/my_app/endpoint.ex":
+var statusToClass = {
+  'green': 'bg-success',
+  'red': 'bg-danger'
+};
+
+var statNameMap = {
+  'push_queue_length': 'Push queue length',
+  'byte_size': 'Size',
+  'db_fetch_count': 'Query count',
+  'db_fetch_duration': 'Total query duration',
+  'db_fetch_mean_duration': 'Mean query duration'
+};
+
+var byteSizes = {};
+byteSizes.b = 1;
+byteSizes.k = byteSizes.b * 1024;
+byteSizes.m = byteSizes.k * 1024;
+byteSizes.g = byteSizes.m * 1024;
+byteSizes.t = byteSizes.g * 1024;
+byteSizes.p = byteSizes.t * 1024;
+byteSizes.e = byteSizes.p * 1024;
+byteSizes.z = byteSizes.e * 1024;
+byteSizes.y = byteSizes.z * 1024;
+var byteSizeNames = ['y', 'z', 'e', 'p', 't', 'g', 'm', 'k', 'b'];
+
+function getByteSizeDescription(byteSize) {
+  var byteSizePerKind = byteSizeNames.reduce(function (acc, val) {
+    var count = Math.floor(byteSize / byteSizes[val]);
+    acc[val] = count;
+    byteSize = byteSize - count * byteSizes[val];
+    return acc;
+  }, {});
+  return byteSizeNames.filter(function (bsn) {
+    return byteSizePerKind[bsn];
+  }).map(function (bsn) {
+    return "" + byteSizePerKind[bsn] + bsn.toUpperCase();
+  }).join('+');
+};
+
+function getDurationDescription(milliseconds) {
+  var x = new Date(0);
+  x.setTime(x.getTime() + x.getTimezoneOffset() * 60000);
+  x.setTime(x.getTime() + milliseconds);
+  return [x.getFullYear() != 1970 ? x.getFullYear() - 1970 + "Y" : '', x.getMonth() != 0 ? x.getMonth() + "M" : '', x.getDate() != 1 ? x.getDate() - 1 + "D" : '', x.getHours() != 0 ? x.getHours() + "H" : '', x.getMinutes() != 0 ? x.getMinutes() + "m" : '', x.getSeconds() != 0 ? x.getSeconds() + "s" : '', x.getMilliseconds() != 0 ? x.getMilliseconds() + "ms" : ''].filter(function (x) {
+    return x;
+  }).join('+');
+}
+
+window.foo = getDurationDescription;
+
+function updateTime() {
+  document.getElementById('time').textContent = new Date().toISOString();
+}
+
+function updateStatus(status) {
+  var statusElement = document.getElementById('status');
+  Array.from(statusElement.classList).filter(function (klass) {
+    return (/^bg-/.test(klass)
+    );
+  }).forEach(function (klass) {
+    return statusElement.classList.remove(klass);
+  });
+  statusElement.classList.add(statusToClass[status.status]);
+
+  var versionElement = document.getElementById('cache-version');
+  var version = (status.heartbeat || {}).version;
+  versionElement.textContent = version ? "v" + version : '-';
+}
+
+function makeCacheRow(cacheName, cache) {
+  var tplt = document.querySelector('[data-template="cache-row-template"]').cloneNode(true);
+  tplt.removeAttribute('data-template');
+
+  var header = tplt.querySelector('[data-template-role="header"]');
+  header.removeAttribute('data-template-role');
+  header.innerHTML = cacheName + " (pid: <em>" + cache.pid + "</em>)";
+
+  var keys = tplt.querySelector('[data-template-role="keys"]');
+  keys.removeAttribute('data-template-role');
+  Object.keys(cache.keys || {}).forEach(function (key) {
+    var tr = document.createElement('tr');
+    var tdCacheKey = document.createElement('td');
+    var tdCacheKeyClientsCount = document.createElement('td');
+    tdCacheKey.textContent = key;
+    tdCacheKeyClientsCount.textContent = cache.keys[key];
+    tr.appendChild(tdCacheKey);
+    tr.appendChild(tdCacheKeyClientsCount);
+    keys.appendChild(tr);
+  });
+
+  var stats = tplt.querySelector('[data-template-role="stats"]');
+  keys.removeAttribute('data-template-role');
+  var statKeys = Object.keys(cache.stats || {});
+  statKeys.sort();
+  statKeys.forEach(function (statKey) {
+    var tr = document.createElement('tr');
+    var tdKey = document.createElement('td');
+    var tdValue = document.createElement('td');
+    tdKey.textContent = statNameMap[statKey];
+    if (statKey === 'byte_size') {
+      tdValue.textContent = getByteSizeDescription(cache.stats[statKey]);
+    } else if (statKey === 'db_fetch_duration' || statKey === 'db_fetch_mean_duration') {
+      tdValue.textContent = getDurationDescription(Math.round(cache.stats[statKey]));
+    } else {
+      tdValue.textContent = cache.stats[statKey];
+    }
+    tr.appendChild(tdKey);
+    tr.appendChild(tdValue);
+    stats.appendChild(tr);
+  });
+
+  return tplt;
+}
+
 socket.connect();
 
 // Now that you are connected, you can join channels with a topic:
-var channel = socket.channel("topic:subtopic", {});
-channel.join().receive("ok", function (resp) {
-  console.log("Joined successfully", resp);
-}).receive("error", function (resp) {
-  console.log("Unable to join", resp);
+var statsChannel = socket.channel("stats:all", null);
+
+statsChannel.join().receive("ok", function (_) {
+  return console.log('joined the stats channel successfully');
+}).receive("error", function (_) {
+  return console.error('unable to join the stats channel');
 });
+
+statsChannel.on("heartbeat", function (heartbeat) {
+  updateTime();
+  updateStatus(heartbeat);
+});
+
+statsChannel.on("stats", function (stats) {
+  updateTime();
+
+  var statsFailed = document.getElementById('statsFailed');
+
+  if (stats.status !== 'green') {
+    statsFailed.style.display = '';
+    return;
+  }
+
+  statsFailed.style.display = 'none';
+
+  stats = stats.stats;
+
+  var pushQueueLength = document.getElementById('pushQueueLength');
+  pushQueueLength.textContent = stats.push_queue_length;
+
+  var cacheStatsLayout = {};
+  var cacheNames = Object.keys(stats.caches);
+
+  cacheNames.sort();
+
+  cacheNames.forEach(function (cacheName) {
+    var cache = stats.caches[cacheName];
+    var statNames = Object.keys(cache);
+    statNames.sort();
+
+    cacheStatsLayout[cacheName] = statNames;
+  });
+
+  var cacheStatsDomElements = [];
+
+  Object.keys(cacheStatsLayout).forEach(function (cacheName) {
+    var cacheStatsDomElement = makeCacheRow(cacheName, stats.caches[cacheName]);
+    cacheStatsDomElements.push(cacheStatsDomElement);
+  });
+
+  var statsElement = document.getElementById('stats');
+  Array.from(statsElement.children).forEach(function (child) {
+    return child.remove();
+  });
+  cacheStatsDomElements.forEach(function (node) {
+    node.style.display = '';
+    statsElement.appendChild(node);
+  });
+});
+
+statsChannel.push('poll', null);
 
 exports.default = socket;
 });
 
-;require.alias("phoenix/priv/static/phoenix.js", "phoenix");
-require.alias("phoenix_html/priv/static/phoenix_html.js", "phoenix_html");require.register("___globals___", function(exports, require, module) {
+;require.alias("phoenix_html/priv/static/phoenix_html.js", "phoenix_html");
+require.alias("phoenix/priv/static/phoenix.js", "phoenix");require.register("___globals___", function(exports, require, module) {
   
 });})();require('___globals___');
 

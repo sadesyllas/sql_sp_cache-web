@@ -17,6 +17,8 @@ defmodule SqlSpCacheWeb.Router do
     pipe_through :browser # Use the default browser stack
 
     get "/", IndexController, :index
+
+    get "/heartbeat", HeartbeatController, :index
   end
 
   # Other scopes may use custom stacks.

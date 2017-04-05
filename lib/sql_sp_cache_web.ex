@@ -10,6 +10,8 @@ defmodule SqlSpCacheWeb do
     children = [
       # Start the endpoint when the application starts
       supervisor(SqlSpCacheWeb.Endpoint, []),
+      worker(SqlSpCacheWeb.CachePoller, []),
+      worker(SqlSpCacheWeb.CacheClient, ["127.0.0.1", 4416, 5_000]),
       # Start your own worker by calling: SqlSpCacheWeb.Worker.start_link(arg1, arg2, arg3)
       # worker(SqlSpCacheWeb.Worker, [arg1, arg2, arg3]),
     ]

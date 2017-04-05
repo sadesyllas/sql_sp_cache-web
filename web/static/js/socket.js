@@ -29,7 +29,6 @@ let socket = new Socket("/socket", {params: {token: window.userToken}})
 //         conn
 //       end
 //     end
-//
 // Now you need to pass this token to JavaScript. You can do so
 // inside a script tag in "web/templates/layout/app.html.eex":
 //
@@ -51,12 +50,184 @@ let socket = new Socket("/socket", {params: {token: window.userToken}})
 // Finally, pass the token on connect as below. Or remove it
 // from connect if you don't care about authentication.
 
+const statusToClass = {
+  'green': 'bg-success',
+  'red': 'bg-danger',
+};
+
+const statNameMap = {
+  'push_queue_length': 'Push queue length',
+  'byte_size': 'Size',
+  'db_fetch_count': 'Query count',
+  'db_fetch_duration': 'Total query duration',
+  'db_fetch_mean_duration': 'Mean query duration',
+};
+
+const byteSizes = {};
+byteSizes.b = 1;
+byteSizes.k = byteSizes.b * 1024;
+byteSizes.m = byteSizes.k * 1024;
+byteSizes.g = byteSizes.m * 1024;
+byteSizes.t = byteSizes.g * 1024;
+byteSizes.p = byteSizes.t * 1024;
+byteSizes.e = byteSizes.p * 1024;
+byteSizes.z = byteSizes.e * 1024;
+byteSizes.y = byteSizes.z * 1024;
+const byteSizeNames = ['y', 'z', 'e', 'p', 't', 'g', 'm', 'k', 'b'];
+
+function getByteSizeDescription(byteSize) {
+  const byteSizePerKind = byteSizeNames.reduce((acc, val) => {
+    const count = Math.floor(byteSize / byteSizes[val]);
+    acc[val] = count;
+    byteSize = byteSize - (count * byteSizes[val]);
+    return acc;
+  }, {});
+  return byteSizeNames
+    .filter(bsn => byteSizePerKind[bsn])
+    .map(bsn => `${byteSizePerKind[bsn]}${bsn.toUpperCase()}`)
+    .join('+');
+};
+
+function getDurationDescription(milliseconds) {
+  const x = new Date(0);
+  x.setTime(x.getTime() + (x.getTimezoneOffset() * 60000));
+  x.setTime(x.getTime() + milliseconds);
+  return [
+    x.getFullYear() != 1970 ? `${x.getFullYear() - 1970}Y` : '',
+    x.getMonth() != 0 ? `${x.getMonth()}M` : '',
+    x.getDate() != 1 ? `${x.getDate() - 1}D` : '',
+    x.getHours() != 0 ? `${x.getHours()}H` : '',
+    x.getMinutes() != 0 ? `${x.getMinutes()}m` : '',
+    x.getSeconds() != 0 ? `${x.getSeconds()}s` : '',
+    x.getMilliseconds() != 0 ? `${x.getMilliseconds()}ms` : '',
+  ].filter(x => x).join('+');
+}
+
+window.foo = getDurationDescription;
+
+function updateTime() {
+  document.getElementById('time').textContent = new Date().toISOString();
+}
+
+function updateStatus(status) {
+  const statusElement = document.getElementById('status');
+  Array.from(statusElement.classList)
+    .filter(klass => /^bg-/.test(klass))
+    .forEach(klass => statusElement.classList.remove(klass));
+  statusElement.classList.add(statusToClass[status.status]);
+
+  const versionElement = document.getElementById('cache-version');
+  const version = (status.heartbeat || {}).version;
+  versionElement.textContent = version ? `v${version}` : '-';
+}
+
+function makeCacheRow(cacheName, cache) {
+  const tplt = document
+    .querySelector('[data-template="cache-row-template"]')
+    .cloneNode(true);
+  tplt.removeAttribute('data-template');
+
+  const header = tplt.querySelector('[data-template-role="header"]');
+  header.removeAttribute('data-template-role');
+  header.innerHTML = `${cacheName} (pid: <em>${cache.pid}</em>)`;
+
+  const keys = tplt.querySelector('[data-template-role="keys"]');
+  keys.removeAttribute('data-template-role');
+  Object.keys(cache.keys || {}).forEach(key => {
+    const tr = document.createElement('tr');
+    const tdCacheKey = document.createElement('td');
+    const tdCacheKeyClientsCount = document.createElement('td');
+    tdCacheKey.textContent = key;
+    tdCacheKeyClientsCount.textContent = cache.keys[key];
+    tr.appendChild(tdCacheKey);
+    tr.appendChild(tdCacheKeyClientsCount);
+    keys.appendChild(tr);
+  });
+
+  const stats = tplt.querySelector('[data-template-role="stats"]');
+  keys.removeAttribute('data-template-role');
+  const statKeys = Object.keys(cache.stats || {});
+  statKeys.sort();
+  statKeys.forEach(statKey => {
+    const tr = document.createElement('tr');
+    const tdKey = document.createElement('td');
+    const tdValue = document.createElement('td');
+    tdKey.textContent = statNameMap[statKey];
+    if (statKey === 'byte_size') {
+      tdValue.textContent = getByteSizeDescription(cache.stats[statKey]);
+    } else if (statKey === 'db_fetch_duration' || statKey === 'db_fetch_mean_duration') {
+      tdValue.textContent = getDurationDescription(Math.round(cache.stats[statKey]));
+    } else {
+      tdValue.textContent = cache.stats[statKey];
+    }
+    tr.appendChild(tdKey);
+    tr.appendChild(tdValue);
+    stats.appendChild(tr);
+  });
+
+  return tplt;
+}
+
 socket.connect()
 
 // Now that you are connected, you can join channels with a topic:
-let channel = socket.channel("topic:subtopic", {})
-channel.join()
-  .receive("ok", resp => { console.log("Joined successfully", resp) })
-  .receive("error", resp => { console.log("Unable to join", resp) })
+const statsChannel = socket.channel("stats:all", null);
+
+statsChannel
+  .join()
+  .receive("ok", _ => console.log('joined the stats channel successfully'))
+  .receive("error", _ => console.error('unable to join the stats channel'))
+
+statsChannel.on("heartbeat", heartbeat => {
+  updateTime();
+  updateStatus(heartbeat);
+});
+
+statsChannel.on("stats", stats => {
+  updateTime();
+
+  const statsFailed = document.getElementById('statsFailed');
+
+  if (stats.status !== 'green') {
+    statsFailed.style.display = '';
+    return;
+  }
+
+  statsFailed.style.display = 'none';
+
+  stats = stats.stats;
+
+  const pushQueueLength = document.getElementById('pushQueueLength');
+  pushQueueLength.textContent = stats.push_queue_length;
+
+  const cacheStatsLayout = {};
+  const cacheNames = Object.keys(stats.caches);
+
+  cacheNames.sort();
+
+  cacheNames.forEach(cacheName => {
+    const cache = stats.caches[cacheName];
+    const statNames = Object.keys(cache);
+    statNames.sort();
+
+    cacheStatsLayout[cacheName] = statNames;
+  });
+
+  const cacheStatsDomElements = [];
+
+  Object.keys(cacheStatsLayout).forEach(cacheName => {
+    const cacheStatsDomElement = makeCacheRow(cacheName, stats.caches[cacheName]);
+    cacheStatsDomElements.push(cacheStatsDomElement);
+  });
+
+  const statsElement = document.getElementById('stats');
+  Array.from(statsElement.children).forEach(child => child.remove());
+  cacheStatsDomElements.forEach(node => {
+    node.style.display = '';
+    statsElement.appendChild(node);
+  });
+});
+
+statsChannel.push('poll', null);
 
 export default socket

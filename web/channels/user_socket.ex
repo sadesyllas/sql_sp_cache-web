@@ -4,6 +4,8 @@ defmodule SqlSpCacheWeb.UserSocket do
   ## Channels
   # channel "room:*", SqlSpCacheWeb.RoomChannel
 
+  channel "stats:*", SqlSpCacheWeb.StatsChannel
+
   ## Transports
   transport :websocket, Phoenix.Transports.WebSocket
   # transport :longpoll, Phoenix.Transports.LongPoll
